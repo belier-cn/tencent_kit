@@ -1,6 +1,8 @@
 #import "TencentKitPlugin.h"
 #import <TencentOpenAPI/QQApiInterface.h>
 #import <TencentOpenAPI/TencentOAuth.h>
+#import <objc/message.h>
+#import <objc/runtime.h>
 
 enum TencentScene {
     SCENE_QQ = 0,
@@ -33,6 +35,21 @@ enum TencentRetCode {
                                     binaryMessenger:[registrar messenger]];
     TencentKitPlugin *instance =
         [[TencentKitPlugin alloc] initWithChannel:channel];
+    // FlutterSceneLifeCycleDelegate and addSceneDelegate: were added after
+    // the minimum Flutter version supported by this plugin. Register through
+    // the runtime so older Flutter SDKs continue to compile and run.
+    if (@available(iOS 13.0, *)) {
+        Protocol *sceneLifecycleProtocol =
+            NSProtocolFromString(@"FlutterSceneLifeCycleDelegate");
+        SEL addSceneDelegateSelector = NSSelectorFromString(@"addSceneDelegate:");
+        if (sceneLifecycleProtocol != nil &&
+            [registrar respondsToSelector:addSceneDelegateSelector]) {
+            class_addProtocol([TencentKitPlugin class], sceneLifecycleProtocol);
+            ((void (*)(id, SEL, id))objc_msgSend)(registrar,
+                                                  addSceneDelegateSelector,
+                                                  instance);
+        }
+    }
     [registrar addApplicationDelegate:instance];
     [registrar addMethodCallDelegate:instance channel:channel];
 }
@@ -258,31 +275,33 @@ enum TencentRetCode {
 
 #pragma mark - AppDelegate
 
+- (BOOL)handleOpenURL:(NSURL *)url {
+    return [QQApiInterface handleOpenURL:url delegate:self] ||
+           ([TencentOAuth CanHandleOpenURL:url] && [TencentOAuth HandleOpenURL:url]);
+}
+
+- (BOOL)handleUniversalLink:(NSURL *)url {
+    return [QQApiInterface handleOpenUniversallink:url delegate:self] ||
+           ([TencentOAuth CanHandleUniversalLink:url] &&
+            [TencentOAuth HandleUniversalLink:url]);
+}
+
 - (BOOL)application:(UIApplication *)application handleOpenURL:(NSURL *)url {
-    return
-        [QQApiInterface handleOpenURL:url
-                             delegate:self] ||
-        ([TencentOAuth CanHandleOpenURL:url] && [TencentOAuth HandleOpenURL:url]);
+    return [self handleOpenURL:url];
 }
 
 - (BOOL)application:(UIApplication *)application
               openURL:(NSURL *)url
     sourceApplication:(NSString *)sourceApplication
            annotation:(id)annotation {
-    return
-        [QQApiInterface handleOpenURL:url
-                             delegate:self] ||
-        ([TencentOAuth CanHandleOpenURL:url] && [TencentOAuth HandleOpenURL:url]);
+    return [self handleOpenURL:url];
 }
 
 - (BOOL)application:(UIApplication *)application
             openURL:(NSURL *)url
             options:
                 (NSDictionary<UIApplicationOpenURLOptionsKey, id> *)options {
-    return
-        [QQApiInterface handleOpenURL:url
-                             delegate:self] ||
-        ([TencentOAuth CanHandleOpenURL:url] && [TencentOAuth HandleOpenURL:url]);
+    return [self handleOpenURL:url];
 }
 
 - (BOOL)application:(UIApplication *)application
@@ -292,10 +311,45 @@ enum TencentRetCode {
             isEqualToString:NSUserActivityTypeBrowsingWeb]) {
         NSURL *url = userActivity.webpageURL;
         if (url != nil) {
-            return [QQApiInterface handleOpenUniversallink:url delegate:self] ||
-                   ([TencentOAuth CanHandleUniversalLink:url] &&
-                    [TencentOAuth HandleUniversalLink:url]);
+            return [self handleUniversalLink:url];
         }
+    }
+    return NO;
+}
+
+#pragma mark - UIScene
+
+- (BOOL)scene:(UIScene *)scene
+    willConnectToSession:(UISceneSession *)session
+                 options:(UISceneConnectionOptions *)connectionOptions API_AVAILABLE(ios(13.0)) {
+    if (@available(iOS 13.0, *)) {
+        BOOL handled = NO;
+        if (connectionOptions.URLContexts.count > 0) {
+            handled |= [self scene:scene openURLContexts:connectionOptions.URLContexts];
+        }
+        for (NSUserActivity *userActivity in connectionOptions.userActivities) {
+            handled |= [self scene:scene continueUserActivity:userActivity];
+        }
+        return handled;
+    }
+    return NO;
+}
+
+- (BOOL)scene:(UIScene *)scene
+    openURLContexts:(NSSet<UIOpenURLContext *> *)URLContexts API_AVAILABLE(ios(13.0)) {
+    BOOL handled = NO;
+    for (UIOpenURLContext *context in URLContexts) {
+        handled |= [self handleOpenURL:context.URL];
+    }
+    return handled;
+}
+
+- (BOOL)scene:(UIScene *)scene
+    continueUserActivity:(NSUserActivity *)userActivity API_AVAILABLE(ios(13.0)) {
+    if ([userActivity.activityType
+            isEqualToString:NSUserActivityTypeBrowsingWeb] &&
+        userActivity.webpageURL != nil) {
+        return [self handleUniversalLink:userActivity.webpageURL];
     }
     return NO;
 }
