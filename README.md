@@ -37,12 +37,20 @@ Flutter 版腾讯(QQ)SDK
 
 ### iOS
 
-> 暂不支持 SceneDelegate，详见文档 [iOS_SDK环境搭建](https://wiki.connect.qq.com/ios_sdk%e7%8e%af%e5%a2%83%e6%90%ad%e5%bb%ba)
-
 ```txt
 # 不需要做任何额外接入工作
 # 配置已集成到脚本里
 ```
+
+支持 iOS 13+ `UIScene`（Flutter 3.42+）。使用 Flutter 的 Scene 生命周期时，请使用
+`FlutterSceneDelegate`（或将其生命周期转发给 Flutter）；插件会自动接收
+`scene:openURLContexts:` 和 `scene:continueUserActivity:` 回调。
+
+### Swift Package Manager
+
+插件同时支持 CocoaPods 和 Swift Package Manager，两种方式均使用
+`ios/tencent_kit/TencentOpenAPI.xcframework` 中最新的 Lite SDK，包含真机和模拟器切片；
+Flutter 会自动选择并集成对应的依赖方式，无需手动添加腾讯 SDK。
 
 * Universal Links
 
