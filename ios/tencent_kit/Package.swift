@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "tencent_kit",
     platforms: [
-        .iOS("13.0")
+        .iOS("15.0")
     ],
     products: [
         .library(name: "tencent-kit", targets: ["tencent_kit"])
